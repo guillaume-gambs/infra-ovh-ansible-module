@@ -78,6 +78,10 @@ def run_module():
     volume_id = module.params['volume_id']
     state = module.params['state']
 
+    if module.check_mode:
+        module.exit_json(msg="Ensure volume id {} is {} on instance id {} - (dry run mode)".format(volume_id, state, instance_id),
+                         changed=True)
+
     volume_details = {}
     try:
         volume_details = client.get('/cloud/project/%s/volume/%s' % (service_name, volume_id))
@@ -86,7 +90,7 @@ def run_module():
         module.fail_json(msg="Failed to call OVH API: {0}".format(api_error))
 
     # Search if the volume exist. Consider you manage a strict nomenclature.
-    if instance_id in volume_details and state == 'absent':
+    if instance_id in volume_details['attachedTo'] and state == 'absent':
         try:
             result = client.post('/cloud/project/%s/volume/%s/detach' % (service_name, volume_id),
                                  instanceId=instance_id
@@ -100,14 +104,14 @@ def run_module():
         except APIError as api_error:
             module.fail_json(msg="Failed to call OVH API: {0}".format(api_error))
 
-    elif instance_id not in volume_details and state == 'present':
+    elif instance_id not in volume_details['attachedTo'] and state == 'present':
         try:
             result = client.post('/cloud/project/%s/volume/%s/attach' % (service_name, volume_id),
                                  instanceId=instance_id
                                  )
             module.exit_json(
                 changed=True,
-                msg="Volume id {} has been attached from instance id {}".format(
+                msg="Volume id {} has been attached to instance id {}".format(
                     volume_id, instance_id),
                 **result)
 
