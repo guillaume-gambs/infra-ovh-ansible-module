@@ -21,6 +21,7 @@ This collection provide the following modules:
 ```text
 dedicated_server_boot
 dedicated_server_display_name
+dedicated_server_backupftp
 dedicated_server_info
 dedicated_server_install
 dedicated_server_install_wait
@@ -147,4 +148,15 @@ A few examples:
     flavor_id: "{{ flavor_id }}"
     region: "{{ region }}"
     image_id: "{{ image_id }}"
+```
+
+### Activate backup storage on dedicated server
+
+```yaml
+- name: Ensure Backupftp is {{ state }}
+  synthesio.ovh.dedicated_server_backupftp:
+    service_name: "{{ service_name }}"
+    state:  "{{ state }}"
+  delegate_to: localhost
+  register: backup_storage
 ```
