@@ -22,6 +22,7 @@ This collection provide the following modules:
 dedicated_server_boot
 dedicated_server_display_name
 dedicated_server_backupftp
+dedicated_server_backupftp_acl
 dedicated_server_info
 dedicated_server_install
 dedicated_server_install_wait
@@ -160,3 +161,30 @@ A few examples:
   delegate_to: localhost
   register: backup_storage
 ```
+
+### Create or Update a Backup FTP/NFS/CIFS ACL
+
+```yaml
+- name: Manage acl on backup storage of {{ service_name }}
+  synthesio.ovh.dedicated_server_backupftp_acl:
+    service_name: "{{ service_name }}"
+    ftp: false
+    nfs: true
+    cifs: false
+    ip: "{{ '1.2.3.4/32' | regex_replace('/','%2F') }}"
+    state: present
+  delegate_to: localhost
+  register: backup_storage_acl
+  ```
+
+### Revoke a Backup FTP/NFS/CIFS ACL
+
+```yaml
+- name: Manage acl on backup storage of {{ service_name }}
+  synthesio.ovh.dedicated_server_backupftp_acl:
+    service_name: "{{ service_name }}"
+    ip: "{{ '1.2.3.4/32' | regex_replace('/','%2F') }}"
+    state: absent
+  delegate_to: localhost
+  register: backup_storage_acl
+  ```
