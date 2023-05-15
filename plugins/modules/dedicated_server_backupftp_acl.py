@@ -49,7 +49,8 @@ options:
         required: true
         type: ipBlock
         description:
-            - The IP Block specific to this ACL. It musts belong to your server.
+            - The IP Block specific to this ACL.
+            - It musts belong to your server.
     state:
         required: false
         default: present
@@ -65,7 +66,7 @@ EXAMPLES = r'''
     ftp: false
     nfs: true
     cifs: false
-    ip: {{ ip |regex_replace('/','%2F') }}
+    ip: {{ ip }}
     state: present
   delegate_to: localhost
   register: backup_storage_acl
@@ -77,6 +78,8 @@ from ansible_collections.synthesio.ovh.plugins.module_utils.ovh import (
     ovh_api_connect,
     ovh_argument_spec,
 )
+import urllib.parse
+
 
 try:
     from ovh.exceptions import APIError, ResourceNotFoundError
@@ -91,7 +94,14 @@ def run_module():
     module_args.update(
         dict(
             service_name=dict(required=True),
-            state=dict(choices=["present", "absent"], default="present"),
+            cifs=dict(required=False, default=False, type='bool'),
+            ftp=dict(required=False, default=False, type='bool'),
+            nfs=dict(required=False, default=False, type='bool'),
+            ip=dict(required=True),
+            state=dict(
+                required=False,
+                choices=["present", "absent"],
+                default="present"),
         )
     )
 
@@ -99,15 +109,20 @@ def run_module():
     client = ovh_api_connect(module)
 
     service_name = module.params["service_name"]
+    cifs = module.params["cifs"]
     ftp = module.params["ftp"]
     nfs = module.params["nfs"]
-    cifs = module.params["cifs"]
-    ip = module.params["ip"]
+    # url encode the ip mask (/32 -> %2F)
+    ip =  module.params["ip"]
+    ip_encode = urllib.parse.quote(ip, safe='')
     state = module.params["state"]
 
     try:
         backup_storage_info_acl = client.get(
-            "/dedicated/server/%s/features/backupFTP/access/%s" % (service_name, ip)
+            "/dedicated/server/%s/features/backupFTP/access/%s" % (
+                service_name,
+                ip_encode
+            )
         )
         backup_storage_acl_exist = True
 
@@ -129,7 +144,7 @@ def run_module():
             )
 
         client.put(
-            "/dedicated/server/%s/features/backupFTP/access/%s" % (service_name, ip),
+            "/dedicated/server/%s/features/backupFTP/access/%s" % (service_name, ip_encode),
             cifs=cifs,
             ftp=ftp,
             nfs=nfs,
@@ -137,10 +152,12 @@ def run_module():
 
         try:
             backup_storage_apply_acl = client.get(
-                "/dedicated/server/%s/features/backupFTP/access/%s" % (service_name, ip)
+                "/dedicated/server/%s/features/backupFTP/access/%s" % (service_name, ip_encode)
             )
         except APIError as api_error:
-            module.fail_json(msg="Failed to call OVH API: {0}".format(api_error))
+            module.fail_json(
+                msg="Failed to call OVH API: {0}".format(api_error)
+            )
 
         module.exit_json(
             msg="Reapply ACL on backup storage {} on IP {}".format(
@@ -148,7 +165,6 @@ def run_module():
                 ip,
             ),
             changed=True,
-            **backup_storage_info_acl,
             **backup_storage_apply_acl,
         )
 
@@ -165,18 +181,20 @@ def run_module():
 
         try:
             result = client.post(
-                "/dedicated/server/%s/features/backupFTP/access",
+                "/dedicated/server/%s/features/backupFTP/access" % service_name,
                 cifs=cifs,
                 ftp=ftp,
                 nfs=nfs,
                 ipBlock=ip,
             )
         except APIError as api_error:
-            module.fail_json(msg="Failed to call OVH API: {0}".format(api_error))
+            module.fail_json(
+                msg="Failed to call OVH API: {0}".format(api_error)
+            )
 
         try:
             backup_storage_apply_acl = client.get(
-                "/dedicated/server/%s/features/backupFTP/access/%s" % service_name, ip
+                "/dedicated/server/%s/features/backupFTP/access/%s" % (service_name, ip_encode)
             )
         except APIError as api_error:
             module.fail_json(msg="Failed to call OVH API: {0}".format(api_error))
@@ -184,7 +202,6 @@ def run_module():
         module.exit_json(
             msg="Enable backup storage of {}".format(service_name),
             changed=True,
-            **result,
             **backup_storage_apply_acl,
         )
 
@@ -200,7 +217,7 @@ def run_module():
 
         try:
             result = client.delete(
-                "/dedicated/server/%s/features/backupFTP/access/%s" % (service_name, ip)
+                "/dedicated/server/%s/features/backupFTP/access/%s" % (service_name, ip_encode)
             )
 
             module.exit_json(
@@ -212,7 +229,9 @@ def run_module():
             )
 
         except APIError as api_error:
-            module.fail_json(msg="Failed to call OVH API: {0}".format(api_error))
+            module.fail_json(
+                msg="Failed to call OVH API: {0}".format(api_error)
+            )
 
     else:  # elif state == "absent" and not backup_storage_acl_exist:
         if module.check_mode:

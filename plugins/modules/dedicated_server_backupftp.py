@@ -42,10 +42,14 @@ EXAMPLES = r'''
 RETURN = r''' # '''
 
 from ansible_collections.synthesio.ovh.plugins.module_utils.ovh import ovh_api_connect, ovh_argument_spec
+from ansible.utils.display import Display
+from ansible import constants
+import time
+
+display = Display()
 
 try:
     from ovh.exceptions import APIError, ResourceNotFoundError
-
     HAS_OVH = True
 except ImportError:
     HAS_OVH = False
@@ -57,6 +61,8 @@ def run_module():
         dict(
             service_name=dict(required=True),
             state=dict(choices=["present", "absent"], default="present"),
+            max_retry=dict(required=False, default=240),
+            sleep=dict(required=False, default=10),
         )
     )
 
@@ -65,6 +71,8 @@ def run_module():
 
     service_name = module.params["service_name"]
     state = module.params["state"]
+    max_retry = module.params['max_retry']
+    sleep = module.params['sleep']
 
     try:
         backup_storage_info = client.get(
@@ -92,6 +100,7 @@ def run_module():
         )
 
     elif state == "present" and not backup_storage:
+        taskfunction = "createBackupFTP"
         if module.check_mode:
             module.exit_json(
                 msg="Enable backup storage of {} - (dry run mode)".format(service_name),
@@ -103,16 +112,36 @@ def run_module():
                 "/dedicated/server/%s/features/backupFTP" % service_name
             )
 
-            module.exit_json(
-                msg="Enable backup storage of {}".format(service_name),
-                changed=True,
-                **result
-            )
-
         except APIError as api_error:
             module.fail_json(msg="Failed to call OVH API: {0}".format(api_error))
 
+        for i in range(1, int(max_retry)):
+            # Messages cannot be displayed in real time (yet)
+            # https://github.com/ansible/proposals/issues/92
+            display.display("%i out of %i" %
+                            (i, int(max_retry)), constants.COLOR_VERBOSE)
+            try:
+                tasklist = client.get(
+                    '/dedicated/server/%s/task' % service_name,
+                    function=taskfunction)
+                resulttask = client.get(
+                    '/dedicated/server/%s/task/%s' % (service_name, max(tasklist)))
+            except APIError as api_error:
+                return module.fail_jsonl(msg="Failed to call OVH API: {0}".format(api_error))
+
+            if "done" in resulttask['status']:
+                module.exit_json(
+                    msg="Enable backup storage of {}".format(service_name),
+                    changed=True,
+                    **result
+                )
+
+            display.display("status: {} comment: {}".format(resulttask['status'], resulttask['comment']), constants.COLOR_VERBOSE)
+            time.sleep(float(sleep))
+        module.fail_json(msg="Max wait time reached, about %i x %i seconds" % (i, int(sleep)))
+
     elif state == "absent" and backup_storage:
+        taskfunction = "removeBackupFTP"
         if module.check_mode:
             module.exit_json(
                 msg="Disable backup storage of {} to state {} - (dry run mode)".format(
